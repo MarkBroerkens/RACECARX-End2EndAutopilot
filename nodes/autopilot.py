@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 
 import time
 
@@ -6,8 +6,8 @@ import rospy
 from ackermann_msgs.msg import AckermannDriveStamped
 from sensor_msgs.msg import Image
 
-from keras.models import load_model
-from keras_preprocessing.image.utils import load_img, img_to_array
+#from tensorflow.python.keras.models import load_model
+#from tensorflow.python.keras_preprocessing.image.utils import load_img, img_to_array
 
 from PIL import Image as pil_image
 from io import BytesIO
@@ -17,7 +17,7 @@ class ROSPackage_Autopilot:
     def __init__(self):
         rospy.init_node('autopilotr')
         rospy.loginfo("AI driver init. Loading neural network...")
-        self.model = load_model('/tmp/best_model.h5')
+        #self.model = load_model('/tmp/best_model.h5')
         rospy.loginfo("Neural network loaded, starting service.")
 
         self.value_to_publish = AckermannDriveStamped()
