@@ -1,3 +1,5 @@
 <launch>
-	<node name="autopilot" pkg="autopilot" type="nodes/autopilot.py" output="screen" />
+	<node name="autopilot_node" pkg="autopilot" type="autopilot_node" output="screen">
+		<param name="model" value="/models/model.h5"/>
+	</node>
 </launch>

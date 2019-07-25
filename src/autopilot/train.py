@@ -1,6 +1,4 @@
 """Train the model"""
-
-import argparse
 import logging
 import os
 import random
@@ -10,21 +8,19 @@ import tensorflow as tf
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from model.utils import Params
-from model.utils import set_logger
-from model.utils import save_dict_to_json
+from utils import Params
+from utils import set_logger
+from utils import save_dict_to_json
 
 from random import getrandbits
 
-from tensorflow.python import keras
-from tensorflow.python.keras.layers import Input, Dense
-from tensorflow.python.keras.models import Model, Sequential
-from tensorflow.python.keras.layers import Convolution2D, MaxPooling2D, Reshape, BatchNormalization
-from tensorflow.python.keras.layers import Activation, Dropout, Flatten, Cropping2D, Lambda
-from tensorflow.python.keras.layers.merge import concatenate
-from tensorflow.python.keras.layers import LSTM
-from tensorflow.python.keras.layers.wrappers import TimeDistributed as TD
-from tensorflow.python.keras.layers import Conv3D, MaxPooling3D, Cropping3D, Conv2DTranspose
+from tensorflow import keras
+from tensorflow.keras.layers import Input, Dense
+from tensorflow.keras.models import Model, Sequential
+from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Reshape, BatchNormalization
+from tensorflow.keras.layers import Activation, Dropout, Flatten, Cropping2D, Lambda
+from tensorflow.keras.layers import Conv3D, MaxPooling3D, Cropping3D, Conv2DTranspose
+
 
 
 def _parse_function(filename, labels, size):
@@ -37,7 +33,7 @@ def _parse_function(filename, labels, size):
     image_string = tf.io.read_file(filename)
 
     # Don't use tf.image.decode_image, or the output shape will be undefined
-    image_decoded = tf.image.decode_jpeg(image_string, channels=3)
+    image_decoded = tf.io.decode_jpeg(image_string, channels=3)
 
     # This will convert to float values in [0, 1]
     image = tf.image.convert_image_dtype(image_decoded, tf.float32)
@@ -48,7 +44,7 @@ def _parse_function(filename, labels, size):
     return resized_image, labels
 
 
-def train_preprocess(image, labels):
+def _train_augment(image, labels):
     """Image preprocessing for training.
 
     Apply the following operations:
@@ -87,7 +83,7 @@ def input_fn(is_training, filenames, labels, params):
     # Create a Dataset serving batches of images and labels
     # We don't repeat for multiple epochs because we always train and evaluate for one epoch
     parse_fn = lambda f, l: _parse_function(f, l, params.image_size)
-    train_fn = lambda f, l: train_preprocess(f, l)
+    train_fn = lambda f, l: _train_augment(f, l)
 
     if is_training:
         dataset = (tf.data.Dataset.from_tensor_slices((filenames, (labels[['steering_angle']], labels[['speed']])))
@@ -135,6 +131,7 @@ def training_pipeline(train_filenames, train_labels, eval_filenames, eval_labels
                                                patience=params.early_stop_patience,
                                                verbose=1,
                                                mode='auto')
+
     save_best = keras.callbacks.ModelCheckpoint(model_file,
                                                 monitor='val_loss',
                                                 verbose=1,
@@ -193,31 +190,7 @@ def default_n_linear(num_outputs=2, input_shape=(64, 64, 3), roi_crop=(0, 0)):
     return model
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model_dir', default='experiments/learning_rate',
-                        help="Experiment directory containing params.json")
-    parser.add_argument('--data_dir', default='/data/cleaned',
-                        help="Directory containing the dataset")
-    parser.add_argument('--restore_from', default=None,
-                        help="Optional, directory or file containing weights to reload before training")
-
-    # Set the random seed for the whole graph for reproductible experiments
-    tf.set_random_seed(230)
-
-    # Load the parameters from json file
-    args = parser.parse_args()
-    json_path = os.path.join(args.model_dir, 'params.json')
-    assert os.path.isfile(json_path), "No json configuration file found at {}".format(json_path)
-    params = Params(json_path)
-
-    # Set the logger
-    set_logger(os.path.join(args.model_dir, 'train.log'))
-
-    # Create the input data pipeline
-    logging.info("Creating the datasets...")
-    data_dir = args.data_dir
-
+def loadCSV(data_dir):
     # find the CSV file(s)
     dataframe_csv = os.path.join(data_dir, 'dataset.csv')
     dataframe = pd.read_csv(dataframe_csv)
@@ -225,12 +198,15 @@ def main():
 
     labels = dataframe[['steering_angle', 'speed']]
 
-    print(labels)
+    return filenames, labels
+
+
+def train(data_dir, model_dir, params):
+    set_logger(os.path.join(model_dir, 'train.log'))
+
+    # find the CSV file(s)
+    filenames, labels = loadCSV(data_dir)
 
     train_filenames, eval_filenames, train_labels, eval_labels = train_test_split(filenames, labels, test_size=0.2)
 
-    training_pipeline(train_filenames, train_labels, eval_filenames, eval_labels, args.model_dir, params)
-
-
-if __name__ == '__main__':
-    main()
+    training_pipeline(train_filenames, train_labels, eval_filenames, eval_labels, model_dir, params)

@@ -1,0 +1,83 @@
+#!/usr/bin/env python
+
+import time
+
+import rospy
+from ackermann_msgs.msg import AckermannDriveStamped
+from sensor_msgs.msg import Image
+
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
+
+from PIL import Image as pil_image
+from io import BytesIO
+import numpy as np
+
+import cv2
+from cv_bridge import CvBridge, CvBridgeError
+
+
+class ROSPackage_Autopilot:
+    def __init__(self):
+        rospy.init_node('autopilot_node')
+        model_file = rospy.get_param("~model", "/models/model.h5")
+        rospy.loginfo("autopilot_node init. Loading neural network '" + model_file + "'")
+        from tensorflow.python.keras import backend as K
+        K.clear_session()
+        self.model = load_model(model_file)
+        self.graph = tf.get_default_graph()
+        #self.model._make_predict_function()
+        rospy.loginfo(self.model.summary())
+        rospy.loginfo("Neural network loaded, starting service.")
+
+        self.value_to_publish = AckermannDriveStamped()
+        self.value_to_publish.drive.speed = 1.0
+        self.value_to_publish.drive.steering_angle = 0.0
+        self.autopilot_publisher = rospy.Publisher(
+            'ackermann_cmd_mux/input/autopilot_node', AckermannDriveStamped, queue_size=10)
+        rospy.Subscriber('camera/color/image_raw', Image, self.receive_image)
+        self.bridge = CvBridge()
+
+    def start(self):
+        rospy.loginfo("Autopilot start")
+        rospy.spin()
+        #rate = rospy.Rate(10)
+        #while not rospy.is_shutdown():
+            #self.ai_driver_publisher.publish(self.value_to_publish)
+            #rate.sleep()
+
+    def image_to_array(self, img):
+        return img_to_array(load_img(BytesIO(img), target_size=(640,480)))
+
+    def receive_image(self, image_msg):
+        rospy.loginfo("img" + type(image_msg).__name__)
+
+        cv_image = self.bridge.imgmsg_to_cv2(image_msg, "bgr8")
+        cv_image = cv2.resize(cv_image, (64,64))
+        np_image = np.asarray(cv_image)  # read as np array
+        np_image = np.expand_dims(np_image, axis=0)  # Add another dimension for tensorflow
+        np_image = np_image.astype(float)
+
+        #image = self.image_to_array(img.data)
+        #rospy.loginfo(image.shape)
+        #image=np.expand_dims(image,0)
+        rospy.loginfo(np_image.shape)
+        with self.graph.as_default():
+            prediction = self.model.predict(np_image)
+        rospy.loginfo(prediction)
+
+        #rospy.loginfo(prediction[0])
+        #value = (np.argmax(prediction[0]) - 2) / 2
+        #rospy.loginfo(str(value))
+        #self.value_to_publish.drive.steering_angle = value
+        #self.ai_driver_publisher.publish(self.value_to_publish)
+
+import sys
+if __name__ == '__main__':
+    print(tf.__version__)
+    package = ROSPackage_Autopilot()
+    try:
+        package.start()
+    except rospy.ROSInterruptException:
+        pass
